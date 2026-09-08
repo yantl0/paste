@@ -91,6 +91,8 @@ Sources/Paste/
   HotKey.swift                Carbon 全局快捷键
   Paster.swift                辅助功能权限、模拟 Cmd+V
   PanelController.swift       弹窗面板 UI
+Resources/AppIcon.icns        应用图标（由 scripts/make_icon.swift 生成）
+scripts/make_icon.swift       用 CoreGraphics 绘制图标并输出 1024px PNG
 build.sh                      编译并打包 .app
 ```
 
