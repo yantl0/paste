@@ -44,7 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKey = HotKey(keyCode: UInt32(kVK_ANSI_X), modifiers: UInt32(optionKey))
         hotKey.onPress = { [weak self] in self?.panelController.toggle() }
         if !hotKey.register() {
-            NSLog("注册全局快捷键 Option+X 失败")
+            let alert = NSAlert()
+            alert.messageText = "无法注册快捷键 Option + X"
+            alert.informativeText = "可能已被其他应用占用。退出占用该快捷键的应用后重新启动 Paste。"
+            alert.runModal()
         }
 
         setupStatusItem()
@@ -125,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn {
             store.clearAll()
+            panelController.refreshIfVisible()
         }
     }
 

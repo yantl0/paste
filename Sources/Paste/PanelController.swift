@@ -21,6 +21,7 @@ final class PanelController: NSObject, NSTableViewDataSource, NSTableViewDelegat
     private var items: [ClipItem] = []
     private var previousApp: NSRunningApplication?
     private var searchDebounce: DispatchWorkItem?
+    private var didPromptAccessibility = false
     private let thumbCache = NSCache<NSNumber, NSImage>()
 
     /// 面板一次最多加载多少条，避免把 2000 条全部读进内存。
@@ -64,6 +65,8 @@ final class PanelController: NSObject, NSTableViewDataSource, NSTableViewDelegat
     }
 
     func hide() {
+        // orderOut 会触发 didResignKey → 再次进入 hide，这里挡掉重入
+        guard panel.isVisible else { return }
         searchDebounce?.cancel()
         panel.orderOut(nil)
         items = []
@@ -146,8 +149,11 @@ final class PanelController: NSObject, NSTableViewDataSource, NSTableViewDelegat
         hide()
 
         guard Paster.isAccessibilityTrusted() else {
-            // 没有辅助功能权限就只复制，不模拟按键
-            Paster.requestAccessibility()
+            // 没有辅助功能权限就只复制，不模拟按键；系统授权提示每次启动只弹一次
+            if !didPromptAccessibility {
+                didPromptAccessibility = true
+                Paster.requestAccessibility()
+            }
             return
         }
         if let target = target, !target.isActive {
@@ -158,7 +164,7 @@ final class PanelController: NSObject, NSTableViewDataSource, NSTableViewDelegat
             }
         }
         // 给目标应用一点时间恢复焦点
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             Paster.sendCommandV()
         }
     }

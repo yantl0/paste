@@ -8,6 +8,8 @@ final class ClipboardMonitor {
 
     /// 单张图片原始数据上限，超过则不记录，避免内存暴涨。
     var maxImageBytes = 30 * 1024 * 1024
+    /// 单条文本上限（UTF-8 字节），超过则不记录，避免超大文本拖慢搜索。
+    var maxTextBytes = 1 * 1024 * 1024
     var thumbMaxPixels = 96
 
     private var timer: Timer?
@@ -50,8 +52,11 @@ final class ClipboardMonitor {
 
         guard let types = pasteboard.types, !types.isEmpty else { return }
         if types.contains(where: { ClipboardMonitor.ignoredTypes.contains($0) }) { return }
+        // 在 Finder 里复制文件时剪贴板会附带文件名文本，这类内容不记录
+        if types.contains(.fileURL) { return }
 
         if types.contains(.string), let s = pasteboard.string(forType: .string) {
+            guard s.utf8.count <= maxTextBytes else { return }
             if !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 onText?(s)
             }

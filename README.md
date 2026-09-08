@@ -35,7 +35,8 @@ cd paste
 open build/Paste.app
 ```
 
-`build.sh` 会用 `swift build -c release` 编译，打包成 `build/Paste.app`，并优先用本机的开发者证书签名；没有证书则使用临时签名。
+`build.sh` 会用 `swift build -c release` 编译并打包成 `build/Paste.app`，默认使用 ad-hoc 签名（无证书，永不过期）。
+开发调试时可以用 `./build.sh --dev`，它会用本机的开发者证书签名，这样重新编译后不需要重新授予辅助功能权限。
 
 ## 首次运行：授予辅助功能权限
 
@@ -65,7 +66,8 @@ open build/Paste.app
 - 面板一次只从 SQLite 读取最近 200 条的摘要（预览文本前 200 字、时间、尺寸），正文按需读取
 - 图片原图以 PNG 存到磁盘，数据库只存一张不超过 96 像素的缩略图；面板最多缓存 60 张缩略图，关闭即释放
 - SQLite 页缓存限制 256 KB，WAL 模式
-- 单张图片原始数据超过 30 MB 不记录
+- 单张图片原始数据超过 30 MB 不记录，单条文本超过 1 MB 不记录
+- 在 Finder 中复制文件不记录（只记录文本和图片）
 
 ## 数据位置
 
