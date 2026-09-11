@@ -1,14 +1,16 @@
 import AppKit
-import Carbon
 import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: Store!
     private var monitor: ClipboardMonitor!
-    private var hotKey: HotKey!
+    private var launcher: LauncherManager!
     private var panelController: PanelController!
+    private var settingsController: SettingsWindowController?
     private var statusItem: NSStatusItem!
+    private var showPanelItem: NSMenuItem!
     private var launchAtLoginItem: NSMenuItem!
+    private var accessibilityItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -40,13 +42,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         monitor.start()
 
-        // Option + X
-        hotKey = HotKey(keyCode: UInt32(kVK_ANSI_X), modifiers: UInt32(optionKey))
-        hotKey.onPress = { [weak self] in self?.panelController.toggle() }
-        if !hotKey.register() {
+        // 剪贴板面板快捷键 + 应用快捷启动
+        launcher = LauncherManager(directory: store.baseDir)
+        launcher.onPanelHotKey = { [weak self] in self?.panelController.toggle() }
+        let failures = launcher.start()
+        if !failures.isEmpty {
             let alert = NSAlert()
-            alert.messageText = "无法注册快捷键 Option + X"
-            alert.informativeText = "可能已被其他应用占用。退出占用该快捷键的应用后重新启动 Paste。"
+            alert.messageText = "部分快捷键无法注册"
+            alert.informativeText = "可能已被其他应用占用：\n" + failures.joined(separator: "\n") + "\n\n可在「设置」中更换。"
             alert.runModal()
         }
 
@@ -56,17 +59,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Paster.requestAccessibility()
         }
 
-        // 调试用：`Paste --show` 启动后直接打开面板
-        if CommandLine.arguments.contains("--show") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.panelController.show()
-            }
-        }
+        handleCommandLine()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.stop()
-        hotKey?.unregister()
+    }
+
+    /// 调试 / 脚本用参数：
+    ///   --show               启动后直接打开剪贴板面板
+    ///   --settings           启动后直接打开设置窗口
+    ///   --import <文件路径>   导入快捷键配置（Paste / Thor 格式），结果写入系统日志
+    ///   --export <文件路径>   导出快捷键配置（Thor 兼容格式）
+    private func handleCommandLine() {
+        let args = CommandLine.arguments
+        if args.contains("--show") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.panelController.show()
+            }
+        }
+        if args.contains("--settings") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.showSettings()
+            }
+        }
+        if let i = args.firstIndex(of: "--export"), i + 1 < args.count {
+            do {
+                try launcher.export(to: URL(fileURLWithPath: args[i + 1]))
+                NSLog("导出快捷键配置完成: %@", args[i + 1])
+            } catch {
+                NSLog("导出快捷键配置失败: %@", error.localizedDescription)
+            }
+        }
+        if let i = args.firstIndex(of: "--import"), i + 1 < args.count {
+            let url = URL(fileURLWithPath: args[i + 1])
+            do {
+                let report = try launcher.importItems(from: url)
+                NSLog("导入快捷键配置完成: %@", report.summary.replacingOccurrences(of: "\n", with: " | "))
+            } catch {
+                NSLog("导入快捷键配置失败: %@", error.localizedDescription)
+            }
+        }
     }
 
     // MARK: - 菜单栏
@@ -76,23 +109,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Paste")
             button.image?.isTemplate = true
-            button.toolTip = "Paste — Option+X 打开剪贴板记录"
         }
 
         let menu = NSMenu()
-        let showItem = NSMenuItem(title: "显示剪贴板记录", action: #selector(showPanel), keyEquivalent: "x")
-        showItem.keyEquivalentModifierMask = [.option]
-        showItem.target = self
-        menu.addItem(showItem)
+        showPanelItem = NSMenuItem(title: "显示剪贴板记录", action: #selector(showPanel), keyEquivalent: "")
+        showPanelItem.target = self
+        menu.addItem(showPanelItem)
+
+        let settingsItem = NSMenuItem(title: "设置…", action: #selector(showSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
         menu.addItem(.separator())
 
         launchAtLoginItem = NSMenuItem(title: "登录时启动", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         launchAtLoginItem.target = self
         menu.addItem(launchAtLoginItem)
 
-        let axItem = NSMenuItem(title: "辅助功能权限设置…", action: #selector(openAccessibility), keyEquivalent: "")
-        axItem.target = self
-        menu.addItem(axItem)
+        accessibilityItem = NSMenuItem(title: "辅助功能权限", action: #selector(openAccessibility), keyEquivalent: "")
+        accessibilityItem.target = self
+        menu.addItem(accessibilityItem)
         menu.addItem(.separator())
 
         let clearItem = NSMenuItem(title: "清空所有记录…", action: #selector(clearHistory), keyEquivalent: "")
@@ -100,8 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(clearItem)
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: "退出 Paste", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        menu.addItem(quitItem)
+        menu.addItem(NSMenuItem(title: "退出 Paste", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         menu.delegate = self
         statusItem.menu = menu
@@ -112,6 +146,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.panelController.show()
         }
+    }
+
+    @objc private func showSettings() {
+        if settingsController == nil {
+            settingsController = SettingsWindowController(manager: launcher)
+        }
+        settingsController?.show()
     }
 
     @objc private func openAccessibility() {
@@ -133,7 +174,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleLaunchAtLogin() {
-        guard #available(macOS 13.0, *) else { return }
         let service = SMAppService.mainApp
         do {
             if service.status == .enabled {
@@ -152,10 +192,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
-        if #available(macOS 13.0, *) {
-            launchAtLoginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        let shortcut = launcher.panelShortcut
+        showPanelItem.title = "显示剪贴板记录"
+        if let key = shortcut.menuKeyEquivalent {
+            showPanelItem.keyEquivalent = key
+            showPanelItem.keyEquivalentModifierMask = shortcut.modifiers
+        } else {
+            showPanelItem.keyEquivalent = ""
+            showPanelItem.title = "显示剪贴板记录  \(shortcut.display)"
         }
-        let ax = menu.items.first { $0.action == #selector(openAccessibility) }
-        ax?.title = Paster.isAccessibilityTrusted() ? "辅助功能权限：已授权" : "辅助功能权限：未授权（点击设置）…"
+        launchAtLoginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        accessibilityItem.title = Paster.isAccessibilityTrusted() ? "辅助功能权限：已授权" : "辅助功能权限：未授权（点击设置）…"
     }
 }

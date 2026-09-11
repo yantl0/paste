@@ -8,7 +8,9 @@
 - `⌘ ⌫` 删除选中记录，`Esc` 关闭面板
 - 相同内容再次复制自动去重并置顶
 - 自动忽略密码管理器等标记为敏感的内容
-- 菜单栏提供「登录时启动」「清空所有记录」
+- **应用快捷启动**：给任意应用绑定全局快捷键，按下即切换到该应用，应用已在前台时再按一次将其隐藏。兼容 [Thor](https://github.com/gbammc/Thor) 的导入导出格式
+- 面板快捷键和应用快捷键都可在「设置」中自定义，与系统保留键或已有快捷键冲突时会拒绝并提示
+- 菜单栏提供「设置」「登录时启动」「清空所有记录」
 
 ## 安装
 
@@ -61,6 +63,24 @@ open build/Paste.app
 | 删除选中项 | `⌘ ⌫` |
 | 关闭面板 | `Esc` |
 
+## 应用快捷启动
+
+菜单栏图标 › 设置…（或 `⌘ ,`）打开设置窗口：
+
+- 点「+」选择应用，然后点击该行的快捷键列录制组合键；`Esc` 取消，`⌫` 清除
+- 快捷键至少要包含 `⌘` `⌥` `⌃` 之一（F1–F20 可单独使用）；与系统保留键、面板快捷键或其他应用重复时拒绝录入
+- 「导入…」「导出…」使用与 Thor 完全相同的 JSON 格式，可以直接导入 Thor 导出的文件，也可以把 Paste 的配置导回 Thor
+- 顶部可以修改剪贴板面板的快捷键，默认 `Option + X`
+
+配置保存在 `~/Library/Application Support/Paste/launchers.json`。
+
+脚本用启动参数：
+
+```bash
+/Applications/Paste.app/Contents/MacOS/Paste --import ~/Downloads/thor_shortcuts   # 导入
+/Applications/Paste.app/Contents/MacOS/Paste --export ~/Desktop/paste_shortcuts.json  # 导出
+```
+
 ## 内存控制
 
 - 面板一次只从 SQLite 读取最近 200 条的摘要（预览文本前 200 字、时间、尺寸），正文按需读取
@@ -74,6 +94,7 @@ open build/Paste.app
 ```
 ~/Library/Application Support/Paste/paste.sqlite
 ~/Library/Application Support/Paste/images/
+~/Library/Application Support/Paste/launchers.json
 ```
 
 卸载时删除 `Paste.app` 和上述目录即可。
@@ -88,7 +109,11 @@ Sources/Paste/
   AppDelegate.swift           菜单栏、组件装配
   ClipboardMonitor.swift      轮询剪贴板、图片转 PNG 与缩略图
   Store.swift                 SQLite 存储、搜索、去重、清理
-  HotKey.swift                Carbon 全局快捷键
+  HotKey.swift                Carbon 全局快捷键注册中心（多热键分发）
+  Shortcut.swift              快捷键模型，Thor 兼容的字符串格式
+  Launcher.swift              应用快捷启动：列表、注册、导入导出、切换/隐藏
+  ShortcutRecorderView.swift  快捷键录制控件
+  SettingsWindowController.swift  设置窗口
   Paster.swift                辅助功能权限、模拟 Cmd+V
   PanelController.swift       弹窗面板 UI
 Resources/AppIcon.icns        应用图标（由 scripts/make_icon.swift 生成）

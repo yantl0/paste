@@ -1,43 +1,84 @@
 import Carbon
 
-/// 基于 Carbon RegisterEventHotKey 的全局快捷键，不需要辅助功能权限。
-final class HotKey {
-    var onPress: (() -> Void)?
+/// 全局快捷键注册中心。基于 Carbon RegisterEventHotKey，不需要辅助功能权限。
+/// 只安装一个事件处理器，按 EventHotKeyID.id 分发到各自的回调。
+final class HotKeyCenter {
+    static let shared = HotKeyCenter()
 
-    private let keyCode: UInt32
-    private let modifiers: UInt32
-    private var hotKeyRef: EventHotKeyRef?
-    private var handlerRef: EventHandlerRef?
-
-    init(keyCode: UInt32, modifiers: UInt32) {
-        self.keyCode = keyCode
-        self.modifiers = modifiers
+    private struct Entry {
+        let shortcut: Shortcut
+        var ref: EventHotKeyRef?
+        let action: () -> Void
     }
 
-    deinit { unregister() }
+    private var handlerRef: EventHandlerRef?
+    private var entries: [UInt32: Entry] = [:]
+    private var nextID: UInt32 = 1
+    private(set) var isSuspended = false
 
-    @discardableResult
-    func register() -> Bool {
+    private init() {
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        let callback: EventHandlerUPP = { _, _, userData -> OSStatus in
-            guard let userData = userData else { return noErr }
-            let me = Unmanaged<HotKey>.fromOpaque(userData).takeUnretainedValue()
-            me.onPress?()
+        let callback: EventHandlerUPP = { _, event, userData -> OSStatus in
+            guard let userData = userData, let event = event else { return noErr }
+            var hotKeyID = EventHotKeyID()
+            let status = GetEventParameter(
+                event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                nil, MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID
+            )
+            guard status == noErr else { return noErr }
+            let center = Unmanaged<HotKeyCenter>.fromOpaque(userData).takeUnretainedValue()
+            center.entries[hotKeyID.id]?.action()
             return noErr
         }
-        let installed = InstallEventHandler(
+        InstallEventHandler(
             GetApplicationEventTarget(), callback, 1, &eventType,
             Unmanaged.passUnretained(self).toOpaque(), &handlerRef
         )
-        guard installed == noErr else { return false }
-
-        let hotKeyID = EventHotKeyID(signature: OSType(0x5053_5445), id: 1) // "PSTE"
-        let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
-        return status == noErr
     }
 
-    func unregister() {
-        if let ref = hotKeyRef { UnregisterEventHotKey(ref); hotKeyRef = nil }
-        if let ref = handlerRef { RemoveEventHandler(ref); handlerRef = nil }
+    /// 注册成功返回 id，失败（系统拒绝或重复）返回 nil。
+    func register(_ shortcut: Shortcut, action: @escaping () -> Void) -> UInt32? {
+        let id = nextID
+        nextID += 1
+        var entry = Entry(shortcut: shortcut, ref: nil, action: action)
+        if !isSuspended {
+            guard let ref = carbonRegister(shortcut, id: id) else { return nil }
+            entry.ref = ref
+        }
+        entries[id] = entry
+        return id
+    }
+
+    func unregister(_ id: UInt32) {
+        guard let entry = entries.removeValue(forKey: id) else { return }
+        if let ref = entry.ref { UnregisterEventHotKey(ref) }
+    }
+
+    /// 录制快捷键期间暂停全部热键，避免录制时误触发。
+    func suspendAll() {
+        guard !isSuspended else { return }
+        isSuspended = true
+        for (id, entry) in entries {
+            if let ref = entry.ref { UnregisterEventHotKey(ref) }
+            entries[id]?.ref = nil
+        }
+    }
+
+    func resumeAll() {
+        guard isSuspended else { return }
+        isSuspended = false
+        for (id, entry) in entries where entry.ref == nil {
+            entries[id]?.ref = carbonRegister(entry.shortcut, id: id)
+        }
+    }
+
+    private func carbonRegister(_ shortcut: Shortcut, id: UInt32) -> EventHotKeyRef? {
+        var ref: EventHotKeyRef?
+        let hotKeyID = EventHotKeyID(signature: OSType(0x5053_5445), id: id) // "PSTE"
+        let status = RegisterEventHotKey(
+            UInt32(shortcut.keyCode), shortcut.carbonModifiers, hotKeyID,
+            GetApplicationEventTarget(), 0, &ref
+        )
+        return status == noErr ? ref : nil
     }
 }
