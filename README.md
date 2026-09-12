@@ -9,6 +9,7 @@
 - 相同内容再次复制自动去重并置顶
 - 自动忽略密码管理器等标记为敏感的内容
 - **应用快捷启动**：给任意应用绑定全局快捷键，按下即切换到该应用，应用已在前台时再按一次将其隐藏。兼容 [Thor](https://github.com/gbammc/Thor) 的导入导出格式
+- **鼠标按键映射**：把鼠标中键、侧键等额外按键映射为键盘快捷键，例如侧键 → `⌃⇥` 切换标签页，可选拦截原始点击。参考 [CobraKey](https://github.com/rolandtolnay/cobra-key)
 - 面板快捷键和应用快捷键都可在「设置」中自定义，与系统保留键或已有快捷键冲突时会拒绝并提示
 - 菜单栏提供「设置」「登录时启动」「清空所有记录」
 
@@ -42,7 +43,7 @@ open build/Paste.app
 
 ## 首次运行：授予辅助功能权限
 
-「点击记录直接粘贴」需要向当前应用发送 `Cmd + V`，macOS 要求授予**辅助功能**权限。
+「点击记录直接粘贴」需要向当前应用发送 `Cmd + V`，「鼠标按键映射」需要拦截鼠标事件，两者都要求授予**辅助功能**权限。
 
 1. 首次启动时系统会弹出授权提示
 2. 前往 **系统设置 › 隐私与安全性 › 辅助功能**，勾选 Paste
@@ -81,6 +82,17 @@ open build/Paste.app
 /Applications/Paste.app/Contents/MacOS/Paste --export ~/Desktop/paste_shortcuts.json  # 导出
 ```
 
+## 鼠标按键映射
+
+设置窗口 › 「鼠标映射」标签页：
+
+- 点「+」，按下要映射的鼠标按键（中键、侧键等，左键右键不可映射），然后录制要触发的键盘快捷键，例如 `⌃⇥`
+- 「拦截原始鼠标点击」默认开启，避免浏览器同时执行侧键默认的「后退」动作
+- 需要辅助功能权限。未授权时映射不会生效，授权后自动开始监听
+- 实现方式是 `CGEventTap` 监听 `otherMouseDown/Up`，命中映射时用 `CGEvent` 合成按键；没有映射时监听器不会启动
+
+配置保存在 `~/Library/Application Support/Paste/mouse_mappings.json`。
+
 ## 内存控制
 
 - 面板一次只从 SQLite 读取最近 200 条的摘要（预览文本前 200 字、时间、尺寸），正文按需读取
@@ -95,6 +107,7 @@ open build/Paste.app
 ~/Library/Application Support/Paste/paste.sqlite
 ~/Library/Application Support/Paste/images/
 ~/Library/Application Support/Paste/launchers.json
+~/Library/Application Support/Paste/mouse_mappings.json
 ```
 
 卸载时删除 `Paste.app` 和上述目录即可。
@@ -113,7 +126,9 @@ Sources/Paste/
   Shortcut.swift              快捷键模型，Thor 兼容的字符串格式
   Launcher.swift              应用快捷启动：列表、注册、导入导出、切换/隐藏
   ShortcutRecorderView.swift  快捷键录制控件
-  SettingsWindowController.swift  设置窗口
+  SettingsWindowController.swift  设置窗口（快捷键 / 鼠标映射两个标签页）
+  MouseMapper.swift           鼠标按键映射：CGEventTap 监听、合成按键、持久化
+  MouseMappingPane.swift      鼠标映射标签页 UI，学习模式
   Paster.swift                辅助功能权限、模拟 Cmd+V
   PanelController.swift       弹窗面板 UI
 Resources/AppIcon.icns        应用图标（由 scripts/make_icon.swift 生成）

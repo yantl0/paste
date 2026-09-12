@@ -7,6 +7,8 @@ final class ShortcutRecorderView: NSControl {
         didSet { needsDisplay = true; toolTip = shortcut?.display }
     }
     var placeholder = "点击录制"
+    /// 全局热键必须带 ⌘ ⌥ ⌃ 之一；作为「输出」的按键（如鼠标映射）可以不带修饰键
+    var requiresModifier = true
     /// 返回错误信息则拒绝本次录入
     var validator: ((Shortcut) -> String?)?
     var onChange: ((Shortcut?) -> Void)?
@@ -85,7 +87,10 @@ final class ShortcutRecorderView: NSControl {
 
         let candidate = Shortcut(keyCode: code, modifiers: mods)
         guard candidate.thorString != nil else { reject("不支持这个按键"); return }
-        guard candidate.hasUsableModifier else { reject("请至少包含 ⌘、⌥、⌃ 中的一个修饰键，或使用 F1–F20 功能键"); return }
+        if requiresModifier, !candidate.hasUsableModifier {
+            reject("请至少包含 ⌘、⌥、⌃ 中的一个修饰键，或使用 F1–F20 功能键")
+            return
+        }
 
         // 先结束录制（恢复全局热键），再校验并应用，保证校验时热键注册状态是真实的
         endRecording()

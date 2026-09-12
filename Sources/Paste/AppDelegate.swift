@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: Store!
     private var monitor: ClipboardMonitor!
     private var launcher: LauncherManager!
+    private var mouseMapper: MouseMapper!
     private var panelController: PanelController!
     private var settingsController: SettingsWindowController?
     private var statusItem: NSStatusItem!
@@ -52,6 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.informativeText = "可能已被其他应用占用：\n" + failures.joined(separator: "\n") + "\n\n可在「设置」中更换。"
             alert.runModal()
         }
+
+        // 鼠标按键映射（需要辅助功能权限，未授权时会在授权后自动启动）
+        mouseMapper = MouseMapper(directory: store.baseDir)
+        mouseMapper.start()
 
         setupStatusItem()
 
@@ -150,7 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showSettings() {
         if settingsController == nil {
-            settingsController = SettingsWindowController(manager: launcher)
+            settingsController = SettingsWindowController(manager: launcher, mapper: mouseMapper)
         }
         settingsController?.show()
     }

@@ -4,15 +4,18 @@ import UniformTypeIdentifiers
 /// 设置窗口：剪贴板面板快捷键 + 应用快捷启动列表（增删、录制、导入导出）。
 final class SettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private let manager: LauncherManager
+    private let mapper: MouseMapper
+    private var mousePane: MouseMappingPane!
     private let tableView = LauncherTableView()
     private let panelRecorder = ShortcutRecorderView()
     private let removeButton = NSButton()
     private let iconCache = NSCache<NSString, NSImage>()
 
-    init(manager: LauncherManager) {
+    init(manager: LauncherManager, mapper: MouseMapper) {
         self.manager = manager
+        self.mapper = mapper
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 580, height: 540),
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 580),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered, defer: false
         )
@@ -42,12 +45,39 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         panelRecorder.shortcut = manager.panelShortcut
         tableView.reloadData()
         removeButton.isEnabled = tableView.selectedRow >= 0
+        mousePane.refresh()
     }
 
     // MARK: - UI
 
     private func buildUI() {
         guard let content = window?.contentView else { return }
+
+        // 两个标签页：快捷键（面板 + 应用启动）、鼠标映射
+        let shortcutsPane = NSView()
+        buildShortcutsPane(into: shortcutsPane)
+        mousePane = MouseMappingPane(mapper: mapper)
+
+        let tabView = NSTabView()
+        tabView.translatesAutoresizingMaskIntoConstraints = false
+        let shortcutsTab = NSTabViewItem(identifier: "shortcuts")
+        shortcutsTab.label = "快捷键"
+        shortcutsTab.view = shortcutsPane
+        let mouseTab = NSTabViewItem(identifier: "mouse")
+        mouseTab.label = "鼠标映射"
+        mouseTab.view = mousePane
+        tabView.addTabViewItem(shortcutsTab)
+        tabView.addTabViewItem(mouseTab)
+        content.addSubview(tabView)
+        NSLayoutConstraint.activate([
+            tabView.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
+            tabView.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
+            tabView.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+            tabView.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+        ])
+    }
+
+    private func buildShortcutsPane(into content: NSView) {
 
         // 面板快捷键
         let panelTitle = label("剪贴板面板快捷键", size: 13, weight: .semibold)
@@ -141,7 +171,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         root.orientation = .vertical
         root.alignment = .leading
         root.spacing = 10
-        root.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 16, right: 20)
+        root.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 12, right: 16)
         root.setCustomSpacing(16, after: panelRow)
         root.setCustomSpacing(16, after: separator)
         root.setCustomSpacing(4, after: launcherTitle)
@@ -153,7 +183,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             root.bottomAnchor.constraint(equalTo: content.bottomAnchor),
             root.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             root.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            panelRow.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -40),
+            panelRow.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -32),
             separator.widthAnchor.constraint(equalTo: panelRow.widthAnchor),
             launcherDesc.widthAnchor.constraint(equalTo: panelRow.widthAnchor),
             scroll.widthAnchor.constraint(equalTo: panelRow.widthAnchor),

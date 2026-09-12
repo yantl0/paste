@@ -22,6 +22,16 @@ struct Shortcut: Hashable {
         return m
     }
 
+    /// 合成键盘事件时用的修饰键标志
+    var cgFlags: CGEventFlags {
+        var f = CGEventFlags()
+        if modifiers.contains(.command) { f.insert(.maskCommand) }
+        if modifiers.contains(.option) { f.insert(.maskAlternate) }
+        if modifiers.contains(.control) { f.insert(.maskControl) }
+        if modifiers.contains(.shift) { f.insert(.maskShift) }
+        return f
+    }
+
     var isFunctionKey: Bool { keyCode >= kVK_F1 && Shortcut.functionKeyCodes.contains(keyCode) }
 
     /// 至少包含 ⌘ ⌥ ⌃ 之一，或者本身是 F1–F20 功能键
