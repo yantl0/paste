@@ -212,15 +212,41 @@ final class MouseMapper {
         }
     }
 
+    /// 修饰键的虚拟键码与对应标志位，按「按下顺序」排列
+    private static let modifierKeys: [(flag: CGEventFlags, keyCode: CGKeyCode)] = [
+        (.maskControl, 59),    // kVK_Control
+        (.maskAlternate, 58),  // kVK_Option
+        (.maskShift, 56),      // kVK_Shift
+        (.maskCommand, 55),    // kVK_Command
+    ]
+
+    /// 合成完整的按键序列：依次按下修饰键 → 主键按下/松开 → 逆序松开修饰键。
+    /// 只发主键并附带 flags 的话，Chrome 等靠监听 Ctrl 松开来结束「标签切换」状态的应用会一直卡在那个状态。
     private static func postKeystroke(_ shortcut: Shortcut) {
         let source = CGEventSource(stateID: .hidSystemState)
+        let target = shortcut.cgFlags
+        let pressed = modifierKeys.filter { target.contains($0.flag) }
+
+        var flags = CGEventFlags()
+        for m in pressed {
+            flags.insert(m.flag)
+            post(source, key: m.keyCode, down: true, flags: flags)
+        }
+
         let key = CGKeyCode(shortcut.keyCode)
-        guard let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
-              let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false) else { return }
-        down.flags = shortcut.cgFlags
-        up.flags = shortcut.cgFlags
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
+        post(source, key: key, down: true, flags: flags)
+        post(source, key: key, down: false, flags: flags)
+
+        for m in pressed.reversed() {
+            flags.remove(m.flag)
+            post(source, key: m.keyCode, down: false, flags: flags)
+        }
+    }
+
+    private static func post(_ source: CGEventSource?, key: CGKeyCode, down: Bool, flags: CGEventFlags) {
+        guard let e = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else { return }
+        e.flags = flags
+        e.post(tap: .cghidEventTap)
     }
 
     // MARK: - 持久化
