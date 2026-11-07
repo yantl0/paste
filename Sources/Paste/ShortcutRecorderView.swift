@@ -53,16 +53,39 @@ final class ShortcutRecorderView: NSControl {
         window?.makeFirstResponder(self)
     }
 
+    private var windowObservers: [NSObjectProtocol] = []
+
     override func becomeFirstResponder() -> Bool {
         liveModifiers = []
         isRecording = true
+        // 窗口失去焦点、关闭，或控件被移出视图树时，必须结束录制，否则全局热键会一直处于暂停状态
+        if let w = window {
+            let nc = NotificationCenter.default
+            windowObservers = [
+                nc.addObserver(forName: NSWindow.didResignKeyNotification, object: w, queue: .main) { [weak self] _ in self?.endRecording() },
+                nc.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { [weak self] _ in self?.endRecording() },
+            ]
+        }
         return true
     }
 
     override func resignFirstResponder() -> Bool {
         isRecording = false
+        removeWindowObservers()
         return true
     }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil { endRecording() }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    private func removeWindowObservers() {
+        windowObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        windowObservers = []
+    }
+
+    deinit { removeWindowObservers() }
 
     override func flagsChanged(with event: NSEvent) {
         liveModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
@@ -102,6 +125,7 @@ final class ShortcutRecorderView: NSControl {
     private func endRecording() {
         if window?.firstResponder === self { window?.makeFirstResponder(nil) }
         isRecording = false
+        removeWindowObservers()
     }
 
     private func apply(_ s: Shortcut?) {

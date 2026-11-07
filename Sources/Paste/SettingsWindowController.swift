@@ -26,6 +26,14 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         iconCache.countLimit = 100
         buildUI()
         NotificationCenter.default.addObserver(self, selector: #selector(launchersChanged), name: .launchersDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(windowLostFocus), name: NSWindow.didResignKeyNotification, object: window)
+        NotificationCenter.default.addObserver(self, selector: #selector(windowLostFocus), name: NSWindow.willCloseNotification, object: window)
+    }
+
+    /// 兜底：设置窗口失焦或关闭时，无论录制框状态如何，都恢复全局热键
+    @objc private func windowLostFocus() {
+        window?.makeFirstResponder(nil)
+        HotKeyCenter.shared.resumeAll()
     }
 
     required init?(coder: NSCoder) { fatalError() }
